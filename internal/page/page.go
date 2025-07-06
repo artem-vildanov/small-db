@@ -1,4 +1,4 @@
-package internal
+package page
 
 import (
 	"encoding/binary"
@@ -8,22 +8,30 @@ import (
 /*
 Пейджа состоит из:
 
-Header 32 bytes
-[]ItemPointer N * 4 bytes
-FreeSpace
-[]DataTuple N * M bytes
+Заголовок (32 bytes) 
+Указатели на данные
+Свободное место
+Данные
 */
 
 // размеры в байтах
 const (
 	PageSize       = 8192 // 8 KB
+
+	// NumSlots (2) + FreeSpaceStart (2) + FreeSpaceEnd (2) + Padding (26)
 	PageHeaderSize = 32
 
-	// NumSlots + FreeSpaceStart + FreeSpaceEnd
+	// NumSlots (2) + FreeSpaceStart (2) + FreeSpaceEnd (2)
 	pageHeaderPayloadSize = 2 + 2 + 2
 	PagePaddingSize       = PageHeaderSize - pageHeaderPayloadSize
 
-	ItemPointerSize = 4
+	// Offset (2) + Size (2) + Status (1)
+	ItemPointerSize = 5
+)
+
+const (
+	StatusDeleted byte = 0
+	StatusActive  byte = 1
 )
 
 // 32 bytes
@@ -33,23 +41,25 @@ type PageHeader struct {
 	FreeSpaceEnd   uint16
 }
 
-// 4 bytes
+// 6 bytes
 type ItemPointer struct {
 	Offset uint16
 	Size   uint16
+	Status uint8
 }
 
 func NewItemPointer(offset uint16, size uint16) *ItemPointer {
 	return &ItemPointer{
 		Offset: offset,
 		Size:   size,
+		Status: StatusActive,
 	}
 }
 
 type Page struct {
 	Header   *PageHeader
 	Pointers []*ItemPointer
-	RawPage []byte
+	RawPage  []byte
 }
 
 func NewEmptyPage() *Page {
@@ -77,6 +87,7 @@ func DeserializePage(serialized []byte) (*Page, error) {
 	}
 
 	deserialized := &Page{
+		Header:  &PageHeader{},
 		RawPage: serialized,
 	}
 
@@ -98,17 +109,26 @@ func DeserializePage(serialized []byte) (*Page, error) {
 		size := binary.BigEndian.Uint16(serialized[pointerOffset:])
 		pointerOffset += 2
 
+		status := uint8(serialized[pointerOffset])
+		pointerOffset += 1
+
 		deserialized.Pointers = append(deserialized.Pointers, &ItemPointer{
 			Offset: offset,
 			Size:   size,
+			Status: status,
 		})
 	}
 
 	return deserialized, nil
 }
 
-func (p *Page) Insert(data []byte) {
+func (p *Page) Insert(data []byte) error {
 	dataLen := uint16(len(data))
+
+	totalFreeSpace := p.Header.FreeSpaceEnd - p.Header.FreeSpaceStart
+	if totalFreeSpace < dataLen {
+		return NewErrCantFitDataIntoPage(dataLen, totalFreeSpace)
+	}
 
 	p.Header.NumSlots += 1
 	p.Header.FreeSpaceStart += ItemPointerSize
@@ -117,7 +137,9 @@ func (p *Page) Insert(data []byte) {
 	pointer := NewItemPointer(p.Header.FreeSpaceEnd, dataLen)
 	p.Pointers = append(p.Pointers, pointer)
 
-	copy(p.RawPage[pointer.Offset:], data)
+	copy(p.RawPage[p.Header.FreeSpaceEnd:], data)
+
+	return nil
 }
 
 func (p *Page) Serialize() []byte {
@@ -137,9 +159,15 @@ func (p *Page) Serialize() []byte {
 	for i := 0; i < len(p.Pointers); i++ {
 		binary.BigEndian.PutUint16(serialized[pointerOffset:], p.Pointers[i].Offset)
 		pointerOffset += 2
+
 		binary.BigEndian.PutUint16(serialized[pointerOffset:], p.Pointers[i].Size)
 		pointerOffset += 2
+
+		serialized[pointerOffset] = p.Pointers[i].Status
+		pointerOffset += 1
 	}
+
+	copy(serialized[pointerOffset:], p.RawPage[pointerOffset:])
 
 	return serialized
 }
