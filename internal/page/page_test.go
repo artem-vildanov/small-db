@@ -20,7 +20,11 @@ func TestPage_SerializeDeserialize(t *testing.T) {
 		page := NewEmptyPage()
 
 		err = page.Insert(data1)
+		require.NoError(t, err)
+
 		err = page.Insert(data2)
+		require.NoError(t, err)
+
 		err = page.Insert(data3)
 		require.NoError(t, err)
 
@@ -29,7 +33,8 @@ func TestPage_SerializeDeserialize(t *testing.T) {
 		deserialized, err := DeserializePage(serialized)
 		require.NoError(t, err)
 
-		assert.Equal(t, 3, len(deserialized.Pointers))
+		assert.Equal(t, page.Header, deserialized.Header)
+		assert.Equal(t, page.Pointers, deserialized.Pointers)
 
 		var (
 			gotData1 = deserialized.GetDataByPointer(deserialized.Pointers[0])
@@ -71,4 +76,3 @@ func TestPage_SerializeDeserialize(t *testing.T) {
 		assert.Equal(t, data1, gotData1)
 	})
 }
-

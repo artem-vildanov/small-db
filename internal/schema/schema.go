@@ -1,4 +1,4 @@
-package table
+package schema
 
 type ColumnType string
 
@@ -31,27 +31,10 @@ type Column struct {
 	Nullable bool       `json:"nullable"`
 }
 
-func (c *Column) Serialize(rawData any) ([]byte, error) {
-	// todo реализовать сериализацию для каждого типа
-	serialized := make([]byte, 0, 10)
-	switch c.Type {
-	case Int32Type:
-	case StringType:
-	case BoolType:
-	}
-
-	return serialized, nil
-}
 
 type Schema struct {
+	ID           string             `json:"id"`
+	Hash         string             `json:"hash"` // 32 bytes
 	Columns      []*Column          `json:"columns"`
 	NameToColumn map[string]*Column `json:"-"`
-}
-
-func CreateNewSchema(path string, columns []*Column) (*Schema, error) {
-	// todo save to json
-}
-
-func GetSchemaByTableName(name string) *Schema {
-	// todo достать из json
 }

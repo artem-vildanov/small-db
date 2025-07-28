@@ -3,12 +3,13 @@ package page
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 )
 
 /*
 Пейджа состоит из:
 
-Заголовок (32 bytes) 
+Заголовок (32 bytes)
 Указатели на данные
 Свободное место
 Данные
@@ -16,7 +17,7 @@ import (
 
 // размеры в байтах
 const (
-	PageSize       = 8192 // 8 KB
+	PageSize = 8192 // 8 KB
 
 	// NumSlots (2) + FreeSpaceStart (2) + FreeSpaceEnd (2) + Padding (26)
 	PageHeaderSize = 32
@@ -29,6 +30,7 @@ const (
 	ItemPointerSize = 5
 )
 
+// статусы строки
 const (
 	StatusDeleted byte = 0
 	StatusActive  byte = 1
@@ -41,7 +43,7 @@ type PageHeader struct {
 	FreeSpaceEnd   uint16
 }
 
-// 6 bytes
+// 5 bytes
 type ItemPointer struct {
 	Offset uint16
 	Size   uint16
@@ -172,11 +174,69 @@ func (p *Page) Serialize() []byte {
 	return serialized
 }
 
-func (p *Page) CheckSpace(requiredSpace int) bool {
+func (p *Page) FreeSpaceMoreThanRequired(requiredSpace int) bool {
 	freeSpace := p.Header.FreeSpaceEnd - p.Header.FreeSpaceStart
 	return int(freeSpace) >= requiredSpace
 }
 
 func (p *Page) GetDataByPointer(pointer *ItemPointer) []byte {
 	return p.RawPage[pointer.Offset : pointer.Offset+pointer.Size]
+}
+
+type pagesIterator struct {
+	descriptor     *os.File
+	pageOffset     int64
+	numPages       int64
+	currentPageNum int64
+	reachedEnd     bool
+}
+
+func NewPagesIter(descriptor *os.File) (*pagesIterator, error) {
+	fileInfo, err := descriptor.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("os.Stat: %w", err)
+	}
+
+	numPages := fileInfo.Size() / PageSize
+
+	return &pagesIterator{
+		descriptor: descriptor,
+		numPages:   numPages,
+		pageOffset: -PageSize,
+	}, nil
+}
+
+func (i *pagesIterator) Next() bool {
+	i.pageOffset += PageSize
+
+	if i.currentPageNum >= i.numPages {
+		i.reachedEnd = true
+		return false
+	} else {
+		i.currentPageNum++
+		return true
+	}
+}
+
+// обошли все страницы итератором
+func (i *pagesIterator) ReachedEnd() bool {
+	return i.reachedEnd 
+}
+
+func (i *pagesIterator) GetPage() (*Page, error) {
+	serialized := make([]byte, PageSize)
+	if _, err := i.descriptor.ReadAt(serialized, i.pageOffset); err != nil {
+		return nil, fmt.Errorf("os.File.ReatAt: %w", err)
+	}
+
+	deserialized, err := DeserializePage(serialized)
+	if err != nil {
+		return nil, fmt.Errorf("DeserializePage: %w", err)
+	}
+
+	return deserialized, nil
+}
+
+func (i *pagesIterator) GetPageOffset() int64 {
+	return i.pageOffset
 }
