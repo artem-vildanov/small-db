@@ -7,11 +7,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/artem-vildanov/small-db/internal/consts"
 	"github.com/google/uuid"
 )
+
+func NewErrInvalidPkName(pkName string) error {
+	return fmt.Errorf("invalid pk name: %s", pkName)
+}
 
 type SchemaManager struct {
 	schemasDirPath string
@@ -54,7 +59,18 @@ func InitSchemaManager(schemasDirPath string) (*SchemaManager, error) {
 	}, nil
 }
 
-func (m *SchemaManager) CreateNewSchema(columns []*Column) (*Schema, error) {
+func (m *SchemaManager) CreateNewSchema(
+	columns []*Column,
+	primaryKeys []string,
+) (*Schema, error) {
+	for _, primaryKey := range primaryKeys {
+		if !slices.ContainsFunc(columns, func(column *Column) bool {
+			return column.Name == primaryKey
+		}) {
+			return nil, NewErrInvalidPkName(primaryKey)
+		}
+	}
+
 	schemaID := uuid.NewString()
 	schemaFilePath := fmt.Sprintf(
 		getSchemaFilePathTemplate(m.schemasDirPath),
@@ -76,6 +92,7 @@ func (m *SchemaManager) CreateNewSchema(columns []*Column) (*Schema, error) {
 		Hash:         hash,
 		Columns:      columns,
 		NameToColumn: nameToColumn,
+		PrimaryKeys:  primaryKeys,
 	}
 
 	marshalledSchema, err := json.Marshal(schema)
@@ -84,8 +101,8 @@ func (m *SchemaManager) CreateNewSchema(columns []*Column) (*Schema, error) {
 	}
 
 	descriptor, err := os.OpenFile(
-		schemaFilePath, 
-		consts.CreateIfNotExists, 
+		schemaFilePath,
+		consts.CreateIfNotExists,
 		consts.PosixAccessRight,
 	)
 	if err != nil {
@@ -120,5 +137,5 @@ func (m *SchemaManager) hashColumns(columns []*Column) (string, error) {
 }
 
 func getSchemaFilePathTemplate(schemasDirPath string) string {
-	return fmt.Sprintf("%s%s%s", schemasDirPath, "%s", consts.JsonExtension) 
+	return fmt.Sprintf("%s%s%s", schemasDirPath, "%s", consts.JsonExtension)
 }

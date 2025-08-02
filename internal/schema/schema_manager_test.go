@@ -221,7 +221,7 @@ func TestSchemaManager_CreateNewSchema(t *testing.T) {
 	manager, err := InitSchemaManager(schemasDirPath)
 	require.NoError(t, err)
 
-	schema, err := manager.CreateNewSchema(columns)
+	schema, err := manager.CreateNewSchema(columns, []string{})
 	require.NoError(t, err)
 
 	filePath := fmt.Sprintf(getSchemaFilePathTemplate(schemasDirPath), schema.ID)

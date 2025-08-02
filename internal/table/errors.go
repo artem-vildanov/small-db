@@ -33,3 +33,7 @@ func ErrFieldNotProvided(fieldName string) error {
 func ErrRecordNotFound() error {
 	return fmt.Errorf("record not found")
 }
+
+func ErrUniqueConstraintViolation(violatedFields []string) error {
+	return fmt.Errorf("unique constraint violation on fields: %v", violatedFields)
+}

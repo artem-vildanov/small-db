@@ -138,12 +138,58 @@ func (m *TableManager) Insert(tableName string, rawRecord map[string]any) error 
 		return fmt.Errorf("NewRecordInSchema: %w", err)
 	}
 
+	if err := m.checkUniqueConstraintViolation(table, record); err != nil {
+		return fmt.Errorf("TableManager.checkUniqueConstraintViolation: %w", err)
+	}
+
 	if err := m.insertRecord(
 		table,
 		dataDescriptor,
 		record,
 	); err != nil {
 		return fmt.Errorf("insertRecord: %w", err)
+	}
+
+	return nil
+}
+
+func (m *TableManager) checkUniqueConstraintViolation(table *Table, record *Record) error {
+	pkToValue := make(map[string]any, len(table.Schema.PrimaryKeys))
+	for _, pk := range table.Schema.PrimaryKeys {
+		field := record.ColumnNameToField[pk]
+		value, err := deserializeValue(field.Column.Type, field.Value)
+		if err != nil {
+			return fmt.Errorf("deserializeValue: %w", err)
+		}
+
+		pkToValue[pk] = value
+	}
+
+	violatedFields := make([]string, 0)
+	notUniqueRecs, err := m.FindByCondition(
+		table.Name,
+		func(r map[string]any) bool {
+			violationsCnt := 0
+
+			for _, pk := range table.Schema.PrimaryKeys {
+				if r[pk] != pkToValue[pk] {
+					if len(violatedFields) == violationsCnt {
+						violatedFields = append(violatedFields, pk)
+					} 
+
+					violationsCnt++
+				}
+			}
+
+			return violationsCnt != 0
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("TableManager.FindByCondition: %w", err)
+	}
+
+	if len(notUniqueRecs) != 0 {
+		return ErrUniqueConstraintViolation(violatedFields)
 	}
 
 	return nil

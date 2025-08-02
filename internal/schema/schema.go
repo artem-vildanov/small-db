@@ -31,10 +31,10 @@ type Column struct {
 	Nullable bool       `json:"nullable"`
 }
 
-
 type Schema struct {
 	ID           string             `json:"id"`
 	Hash         string             `json:"hash"` // 32 bytes
 	Columns      []*Column          `json:"columns"`
+	PrimaryKeys  []string           `json:"primaryKeys"`
 	NameToColumn map[string]*Column `json:"-"`
 }
